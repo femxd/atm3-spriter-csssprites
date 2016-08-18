@@ -147,7 +147,7 @@ Generator.prototype = {
             image_file = fis.file.wrap(imagePath);
             image_file.setContent(image.encode('png'));
             fis.compile(image_file);
-            this.ret.pkg[this.file.spriteRelease] = image_file;
+            this.ret.pkg[image_file.release] = image_file;
         } else {
             var image_file_path = fis.project.getProjectPath() + '/img/' + this.file.filename + ext;
             image_file = fis.file.wrap(image_file_path);
