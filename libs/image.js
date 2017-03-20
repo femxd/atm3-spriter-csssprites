@@ -4,121 +4,106 @@
  */
 
 'use strict';
-var Image = require('images'),
-    path = require('path');
+var Image = require('images');
+var util = require('./util.js');
 
-var RET_LINE_REG = /\r\n\s*/g;
-
-module.exports = function (file, index, list, images, ret, settings, opt) {
+module.exports = function(file, index, list, images, ret, settings, opt) {
     var gen = new Generator(file, index, list, images, ret, settings, opt);
     return gen.css;
 };
 
 function Generator(file, index, list, images, ret, settings, opt) {
-    var self = this;
-    var missSpriteName = fis.util.every(list, function (item) {
-        return !item._sprite_name;
+
+    var default_settings = {
+        'margin': 3,
+        'width_limit': 10240,
+        'height_limit': 10240,
+        'layout': 'linear',
+        'ie_bug_fix': true
+    };
+
+
+    fis.util.map(default_settings, function (key, value) {
+        if (settings.hasOwnProperty(key)) {
+            if ((typeof value) == 'number') {
+                settings[key] = parseFloat(settings[key]);
+            }
+        } else {
+            settings[key] = value;
+        }
     });
-    if (missSpriteName) {
-        this._process(file, index, list, images, ret, settings, opt);
-    } else {
-        var spriteNameGrp = fis.util.groupBy(list, function (item) {
-            return !!item._sprite_name ? item._sprite_name : 'NULL';
-        });
-        fis.util.each(spriteNameGrp, function (imageList, spriteName) {
-            self._process(file, spriteName, imageList, images, ret, settings, opt);
-        })
+
+    //如果layout不支持的类型，默认为linear
+    var layouts = ['matrix', 'linear'];
+    if (layouts.indexOf(settings.layout) == -1) {
+        settings.layout = 'linear';
     }
+
+    //设置宽高限制
+    Image.setLimit(settings.width_limit, settings.height_limit);
+    var that = this;
+    this.file = file;
+    this.ret = ret;
+    this.settings = settings;
+    this.opt = opt;
+    this.css = '';
+    this.images = images;
+    this.index = index;
+
+    var list_ = {};
+    var scales = {};
+
+    function getImage(release) {
+        if (that.images.hasOwnProperty(release)) {
+            return that.images[release];
+        }
+        return false;
+    }
+
+    function insertToObject(o, key, elm) {
+        if (o[key]) {
+            o[key].push(elm);
+        } else {
+            o[key] = [elm];
+        }
+    }
+
+    fis.util.map(list, function (k, bg) {
+        var image_ = Image(getImage(bg.getImageUrl()).getContent());
+        var direct = bg.getDirect();
+
+        bg.image_ = image_;
+
+        var scale_ = bg.size[0] / image_.size().width;
+
+        if (bg.size[0] != -1 && scale_ != settings.scale) {
+            scale_ = '' + scale_;
+            //不支持x, y
+            if (direct === 'z') {
+                if (scales[scale_]) {
+                    insertToObject(scales[scale_], direct, bg);
+                } else {
+                    scales[scale_] = {};
+                    insertToObject(scales[scale_], direct, bg);
+                }
+            }
+        } else {
+            insertToObject(list_, direct, bg);
+        }
+    });
+
+    this.fill(list_['x'], 'x');
+    this.fill(list_['y'], 'y');
+    this.zFill(list_['z'], settings.scale);
+
+    //background-size
+    fis.util.map(scales, function (s, l) {
+        s = parseFloat(s);
+        that.zFill(l['z'], s);
+    });
 }
 
 Generator.prototype = {
-    _process: function (file, index, list, images, ret, settings, opt) {
-        var default_settings = {
-            'margin': 3,
-            'width_limit': 10240,
-            'height_limit': 10240,
-            'layout': 'linear',
-            'ie_bug_fix': true
-        };
-
-        fis.util.map(default_settings, function (key, value) {
-            if (settings.hasOwnProperty(key)) {
-                if ((typeof value) == 'number') {
-                    settings[key] = parseFloat(settings[key]);
-                }
-            } else {
-                settings[key] = value;
-            }
-        });
-
-        //如果layout不支持的类型，默认为linear
-        var layouts = ['matrix', 'linear'];
-        if (layouts.indexOf(settings.layout) == -1) {
-            settings.layout = 'linear';
-        }
-
-        //设置宽高限制
-        Image.setLimit(settings.width_limit, settings.height_limit);
-        var that = this;
-        this.file = file;
-        this.ret = ret;
-        this.settings = settings;
-        this.opt = opt;
-        this.css = this.css || '';
-        this.images = images;
-        this.index = index;
-
-        var list_ = {};
-        var scales = {};
-
-        function getImage(release) {
-            if (that.images.hasOwnProperty(release)) {
-                return that.images[release];
-            }
-            return false;
-        }
-
-        function insertToObject(o, key, elm) {
-            if (o[key]) {
-                o[key].push(elm);
-            } else {
-                o[key] = [elm];
-            }
-        }
-
-        fis.util.map(list, function (k, bg) {
-            var image_ = Image(getImage(bg.getImageUrl()).getContent());
-            var direct = bg.getDirect();
-
-            bg.image_ = image_;
-
-            var scale_ = bg.size[0] / image_.size().width;
-
-            if (bg.size[0] != -1 && scale_ != settings.scale) {
-                scale_ = '' + scale_;
-                //不支持x, y
-                if (direct === 'z') {
-                    if (scales[scale_]) {
-                        insertToObject(scales[scale_], direct, bg);
-                    } else {
-                        scales[scale_] = {};
-                        insertToObject(scales[scale_], direct, bg);
-                    }
-                }
-            } else {
-                insertToObject(list_, direct, bg);
-            }
-        });
-
-        this.fill(list_['x'], 'x', index);
-        this.fill(list_['y'], 'y', index);
-        this.zFill(list_['z'], settings.scale, index);
-        //background-size
-        fis.util.map(scales, function (s, l) {
-            s = parseFloat(s);
-            that.zFill(l['z'], s, index);
-        });
-    },
     _imageExist: function (images, url) {
         for (var i = 0, len = images.length; i < len; i++) {
             if (url == images[i].url) {
@@ -127,79 +112,56 @@ Generator.prototype = {
         }
         return false;
     },
-    after: function (image, arr_selector, direct, scale, spriteName) {
+    after: function (image, arr_selector, direct, scale, list) {
         var ext = '_' + direct + '.png';
         var size = image.size();
-        // FIXME allanyu
-        //if (this.index) {
-        //    ext = '_' + this.index + ext;
-        //}
+        if (this.index) {
+            ext = '_' + this.index + ext;
+        }
 
         if (scale) {
             ext = '_' + scale + ext;
         }
-        var image_file;
-        if (this.file.spriteRelease) {
-            var imagePath = fis.project.getProjectPath() + this.file.spriteRelease;
-            if (spriteName && spriteName !== 'NULL') {
-                imagePath = path.dirname(imagePath) + "/" + spriteName;
-            }
-            image_file = fis.file.wrap(imagePath);
-            image_file.setContent(image.encode('png'));
-            fis.compile(image_file);
-            this.ret.pkg[image_file.release] = image_file;
-        } else {
-            var image_file_path = fis.project.getProjectPath() + '/img/' + this.file.filename + ext;
-            image_file = fis.file.wrap(image_file_path);
-            image_file.setContent(image.encode('png'));
-            fis.compile(image_file);
-            this.ret.pkg['/img/' + this.file.filename + ext] = image_file;
-        }
+
+        var image_file = fis.file.wrap(this.file.realpathNoExt + ext);
+        image_file.setContent(image.encode('png'));
+        fis.compile(image_file);
+        this.file.addLink(image_file.subpath);
+        this.ret.pkg[this.file.subpathNoExt + ext] = image_file;
+
+        // 记录这些图片已经被打包到其他文件上了。
+        var images = this.images;
+        list.forEach(function(item) {
+            var image = images[item.image],
+                map = image.map = image.map || {};
+            map.cssspritePkg = image_file.getId();
+        });
 
         function unique(arr) {
             var map = {};
-            return arr.filter(function (item) {
+            return arr.filter(function(item){
                 return map.hasOwnProperty(item) ? false : map[item] = true;
             });
         }
-
-        function hasUsedRelativeHook() {
-            var hooks = fis.get("modules.hook");
-            return hooks.some(function (hook) {
-                if (typeof hook === "object" && hook.__name === 'relative') {
-                    return true;
-                }
-            });
-        }
-
-        var spriteUrl = image_file.getUrl(this.opt.hash, this.opt.domain) + image_file.hash;
-        var _tmp_css = null;
-        if (hasUsedRelativeHook() && !(image_file.useDomain && image_file.domain)) {
-            spriteUrl = path.relative(this.file.subdirname, spriteUrl).replace(/[\/\\]+/g, '/');
-        }
-
+        var imageUrl = util.getUrl(image_file, this.file, this.opt);
         if (this.settings.ie_bug_fix) {
             var MAX = this.settings.max_selectores || 30; //max 36
             var arr_selector = unique(arr_selector.join(',').split(','));
             var len = arr_selector.length;
-            var n = Math.ceil(len / MAX);
+            var n =  Math.ceil(len / MAX);
 
             for (var i = 0; i < n; i++) {
                 var step = i * MAX
-                _tmp_css = "\r\n" + arr_selector.slice(step, step + MAX).join(',') + '{'
-                    + (scale ? '\r\n    background-size: ' + this.px2rem(size.width * scale + "px ") + this.px2rem(size.height * scale + "px") + ';' : '')
-                    + '\r\n    background-image: url(' + spriteUrl + ')\r\n}';
-                if (this.file.optimizer)
-                    _tmp_css = _tmp_css.replace(RET_LINE_REG, "");
-                this.css += _tmp_css;
+                this.css += arr_selector.slice(step, step + MAX).join(',')
+                    + '{'
+                    + (scale ? 'background-size: ' + (size.width * scale) + 'px ' + (size.height * scale) + 'px;': '')
+                    + 'background-image: url(' + imageUrl + ')}';
             }
         } else {
-            _tmp_css = "\r\n" + unique(arr_selector.join(',').split(',')).join(',') + '{'
-                + (scale ? '\r\n    background-size: ' + this.px2rem(size.width * scale + "px ") + this.px2rem(size.height * scale + "px") + ';' : '')
-                + '\r\n    background-image: url(' + spriteUrl + ')\r\n}'
-            if (this.file.optimizer)
-                _tmp_css = _tmp_css.replace(RET_LINE_REG, "");
-            this.css += _tmp_css;
+            this.css += unique(arr_selector.join(',').split(',')).join(',')
+                + '{'
+                + (scale ? 'background-size: ' + (size.width * scale) + 'px ' + (size.height * scale) + 'px;': '')
+                + 'background-image: url(' + imageUrl + ')}';
         }
 
         //@TODO record
@@ -209,7 +171,7 @@ Generator.prototype = {
 
     },
     z_pack: require('./pack.js'),
-    fill: function (list, direct, spriteName) {
+    fill: function(list, direct) {
         if (!list || list.length == 0) {
             return;
         }
@@ -235,7 +197,7 @@ Generator.prototype = {
                 };
                 images[k].cls.push({
                     selector: list[i].getId(),
-                    position: list[i].getPosition()
+                    position:list[i].getPosition()
                 });
                 //如果是repeat-x的，记录最大宽度；如果是repeat-y的，记录最大高度
                 op_max = (direct == 'x') ? size.width : size.height;
@@ -291,22 +253,13 @@ Generator.prototype = {
             }
         }
 
-        this.after(image, cls, direct, null, spriteName);
+        this.after(image, cls, direct, null, list);
     },
-    px2rem: function (_px) {
-        var unit = this.settings.px2rem && !isNaN(parseInt(this.settings.px2rem)) && parseInt(this.settings.px2rem);
-        if (!unit) {
-            return _px;
-        }
-        var px = parseInt(_px);
-        return typeof _px === 'string' ? px / unit + 'rem ' : px / unit;
-    },
-    zFill: function (list, scale, spriteName) {
+    zFill: function(list, scale) {
         if (!list || list.length == 0) {
             return;
         }
         var i, k, k0, length, images = [[], []], parsed = [[], []], max = [0, 0], total = [0, 0];
-        var _images = [];
         for (i = 0, k = [-1, -1], length = list.length; i < length; i++) {
             var item = list[i];
             // 如果默认是linear，type全都设为left
@@ -330,7 +283,7 @@ Generator.prototype = {
                     }
                     total[k0] += size.height + this.settings.margin;
                 }
-                k[k0]++;
+                k[k0] ++;
                 images[k0][k[k0]] = {
                     url: item.getImageUrl(),
                     cls: [],
@@ -344,13 +297,13 @@ Generator.prototype = {
                 }
                 images[k0][k[k0]].cls.push({
                     selector: list[i].getId(),
-                    position: list[i].getPosition()
+                    position:list[i].getPosition()
                 });
             } else {
                 var key = this._imageExist(images[k0], item.getImageUrl());
                 images[k0][key].cls.push({
                     selector: list[i].getId(),
-                    position: list[i].getPosition()
+                    position:list[i].getPosition()
                 });
             }
         }
@@ -362,9 +315,8 @@ Generator.prototype = {
         }
         if (images[zero]) {
             var zero_root;
-            _images = images[zero].concat([]);// 为了在后面保证css的顺序一致
             //高度从大到小排序
-            images[zero].sort(function (a, b) {
+            images[zero].sort(function(a, b) {
                 return -(a.h - b.h);
             });
             this.z_pack.fit(images[zero]);
@@ -372,7 +324,7 @@ Generator.prototype = {
             max[zero] = zero_root.w;
             total[zero] = zero_root.h;
         }
-        var height = 0;
+        var height  = 0;
         for (i = 0, length = total.length; i < length; i++) {
             if (total[i] > height) {
                 height = total[i];
@@ -389,8 +341,7 @@ Generator.prototype = {
             , j = 0
             , cls = []
             , count = 0
-            , current
-            , _tmp_css;
+            , current;
         if (images[zero]) {
             for (i = 0, length = images[zero].length; i < length; i++) {
                 current = images[zero][i];
@@ -405,21 +356,10 @@ Generator.prototype = {
                         x_ = x_ * scale;
                         y_ = y_ * scale;
                     }
-                    current.cls[j].x_ = x_;
-                    current.cls[j].y_ = y_;
-                    // NOTE: 为了保证css顺序而注释本行
-                    //  cls.push(current.cls[j].selector);
-                }
-            }
-            for (i = 0, length = _images.length; i < length; i++) {
-                current = _images[i];
-                for (j = 0, count = current.cls.length; j < count; j++) {
-                    _tmp_css = "\r\n" + current.cls[j].selector + '{\r\n    background-position:'
-                        + this.px2rem(current.cls[j].x_ + 'px ')
-                        + this.px2rem(current.cls[j].y_ + 'px') + ';\r\n}';
-                    if (this.file.optimizer)
-                        _tmp_css = _tmp_css.replace(RET_LINE_REG, "");
-                    this.css += _tmp_css;
+
+                    this.css += current.cls[j].selector + '{background-position:'
+                        + x_ + 'px '
+                        + y_ + 'px}';
                     cls.push(current.cls[j].selector);
                 }
             }
@@ -444,7 +384,7 @@ Generator.prototype = {
                         if (scale) {
                             x_ = x_ * scale;
                         }
-                        x_ = this.px2rem(x_ + 'px ');
+                        x_ = x_ + 'px ';
                     }
 
                     this.css += current.cls[j].selector + '{background-position:'
@@ -455,6 +395,6 @@ Generator.prototype = {
                 y += current.h;
             }
         }
-        this.after(image, cls, 'z', scale, spriteName);
+        this.after(image, cls, 'z', scale, list);
     }
 };

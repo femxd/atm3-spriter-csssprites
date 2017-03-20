@@ -10,3 +10,6 @@ tmp
 *.tmp
 *.swp
 .DS_Store
+yarn.lock
+yarn-error.log
+.vscode/

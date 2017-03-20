@@ -7,6 +7,7 @@
 'use strict';
 
 var cssParser = require('./libs/cssParser.js');
+var util = require('./libs/util.js');
 var imgGen;
 try {
     imgGen = require('./libs/image.js');
@@ -57,12 +58,12 @@ function processInline(file, ret, settings, opt) {
 
 function _process(content, file, index, ret, settings, opt){
     var images = {};
-    fis.util.map(ret.src, function (subpath, file) {
-        if (file.isImage()) {
-            images[file.getUrl(opt.hash, opt.domain)] = file;
+    fis.util.map(ret.src, function (subpath, item) {
+        if (item.isImage()) {
+            images[util.getUrl(item, file, opt)] = item;
         }
     });
-    var res = cssParser(file, content, images);
+    var res = cssParser(content, images);
     var content = res.content;
     if (res.map && res.map.length > 0) {
         var css = imgGen(file, index, res.map, images, ret, settings, opt);
